@@ -196,7 +196,6 @@ func recvFile(conn *icmp.PacketConn, stop *bool) error {
 		// Packet format: [blockNum uint32][totalBlocks uint32][data...]
 		// Block 0 is the filename packet; blocks 1..N are file data.
 		blockNum = binary.BigEndian.Uint32(payload[0:4])
-		totalBlocks = binary.BigEndian.Uint32(payload[4:8])
 
 		// Check for duplicate packets
 		if seen[blockNum] {
@@ -207,6 +206,7 @@ func recvFile(conn *icmp.PacketConn, stop *bool) error {
 		// Block 0 is just the file name
 		if blockNum == 0 {
 			filename = filepath.ToSlash(string(payload[8:]))
+			totalBlocks = binary.BigEndian.Uint32(payload[4:8])
 			fmt.Printf("[*] Incoming file: %s (via ICMP type %v)\n", filename, msg.Type)
 
 			// The timeout timer is not started until the first packet
@@ -222,6 +222,11 @@ func recvFile(conn *icmp.PacketConn, stop *bool) error {
 			continue
 		}
 
+		// Ignore data blocks if we haven't received the filename yet
+		if filename == "" {
+			continue
+		}
+
 		data := make([]byte, len(payload)-8)
 		copy(data, payload[8:])
 		blocks[blockNum] = data
@@ -229,7 +234,7 @@ func recvFile(conn *icmp.PacketConn, stop *bool) error {
 
 		fmt.Printf(
 			"\r[*] Received block %d of %d",
-			received, totalBlocks,
+			blockNum, totalBlocks,
 		)
 
 		if uint32(received) == totalBlocks {
